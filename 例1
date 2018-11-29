@@ -1,0 +1,86 @@
+#include <EdpPacket.h>
+
+#define BAUDRATE 115200
+#define DEV_KEY "0f3FXdmZ7od0iuVYVZBkiJeaJbg="
+#define DEV_ID  "771323"
+int led_13=13;
+EdpPacketClass edp;  //创建EDP对象
+
+
+bool DoCmdOk(char  *data,char *keyword)
+{
+    bool result = false;
+    if (data != "")   //对于tcp连接命令，直接等待第二次回复
+    {
+        Serial.println(data);  //发送AT指令
+    }
+    if (data == "AT")   //检查模块存在
+        delay(2000);
+    else
+        while (!Serial.available());  // 等待模块回复
+  
+    delay(200);
+    if (Serial.find(keyword))   //返回值判断
+    {
+        result = true;
+    }
+    else
+    {
+        result = false;
+    }
+    while (Serial.available()) Serial.read();   //清空串口接收缓存
+    delay(500); //指令时间间隔
+    return result;
+}
+
+void esp_config()
+{
+    while (!DoCmdOk("AT", "OK"));
+    while (!DoCmdOk("AT+CWMODE=3", "OK"));            //工作模式
+    while (!DoCmdOk("AT+CWJAP=\"xf\",\"12345678\"", "OK"));
+    while (!DoCmdOk("AT+CIPSTART=\"TCP\",\"183.230.40.39\",876", "Linked"));     
+    while (!DoCmdOk("AT+CIPMODE=1", "OK"));           //透传模式
+    while (!DoCmdOk("AT+CIPSEND", ">"));              //开始发送
+}
+
+void setup() {
+    // put your setup code here, to run once:
+    Serial.begin(BAUDRATE);  
+    Serial.setTimeout(3000);   //设置find超时时间
+    delay(4000);
+    pinMode(13,OUTPUT);     
+    esp_config();
+    delay(200);
+}
+
+void loop() 
+{
+    // put your main code here, to run repeatedly:
+    static int edp_connect = 0;
+    uint8* rcvbuf;
+    uint8 sendbuf[]=",;temp,100";
+    int tmp;
+    char num[10];
+
+    /* EDP 连接 */
+    if (!edp_connect)
+    {
+        while (Serial.available()) Serial.read(); //清空串口接收缓存
+        edp.PacketConnect1(DEV_ID,DEV_KEY); //创建EPD连接请求包
+        Serial.write(edp.GetData(),edp.GetWritepos()); //串口发送EDP连接请求包
+        Serial.flush();
+        digitalWrite(13, HIGH);   // 使Led亮
+        edp_connect = 1;
+        delay(500);
+    }   
+    if (edp_connect)
+    {
+        edp.PacketSavedataSimpleString(DEV_ID,",;temp,100"); //创建EPD数据上传数据的数据包，数据“,;temp,100”为分割字符串的格式，具体说明见<设备终端接入协议EDP.docx>
+        Serial.write(edp.GetData(),edp.GetWritepos()); //串口发送EDP数据包
+        Serial.flush();
+        delay(3000);
+    }
+}
+
+
+
